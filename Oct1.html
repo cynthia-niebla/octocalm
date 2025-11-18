@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OctoCalm 🐙</title>
+  <link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Poppins&display=swap" rel="stylesheet">
+  <style>
+    body { 
+      font-family:sans-serif; 
+      text-align: center; 
+      background-color: #ffffe0; 
+      color: green; 
+      padding: 20px;
+    }
+    h1 { 
+      font-family: 'Pacifico', cursive; 
+      color: #f74fa9; 
+      font-size: 4.5em;
+    }
+    #status { font-size: 1.2em; margin: 10px; color: #bd7aff; }
+
+    input {
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #0288d1;
+      font-size: 20px;
+      width: 60%;
+      text-align: center;
+      margin-bottom: 15px;
+    }
+    button {
+      background-color: #569ad1; 
+      color: black; 
+      border: none;
+      padding: 15px 25px; 
+      border-radius: 12px; 
+      font-size: 20px;
+      margin: 10px;
+      cursor: pointer;
+    }
+
+    /* Colores individuales para cada botón al pasar el mouse */
+    .btn-feliz:hover {
+      background-color: #4caf50; /* verde */
+      color: white;
+    }
+
+    .btn-tranquilo:hover {
+      background-color: #2196f3; /* azul */
+      color: white;
+    }
+
+    .btn-estresado:hover {
+      background-color: #f44336; /* rojo */
+      color: white;
+    }
+
+    #feeling { 
+      font-size: 1.5em; 
+      margin: 10px; 
+      color: #000000; 
+      font-family: 'Pacifico', cursive; 
+    }
+
+    #frase {
+      font-size: 2em;
+      margin-bottom: 15px;
+    }
+
+    /* circulito para nivel de estrés */
+    #indicador {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      margin: 20px auto 5px;
+      background-color: #4caf50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 1.2em;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>🐙 OctoCalm</h1>
+  
+  <p>
+    <label for="nombre">Nombre del paciente:</label><br>
+    <input type="text" id="nombre" placeholder="Escribe tu nombre aquí">
+  </p>
+
+  <p id="feeling">¿Cómo te sientes hoy?</p>
+
+  <div id="buttons">
+    <button class="btn-feliz" onclick="responder('😄 Feliz')">😄 Feliz</button>
+    <button class="btn-tranquilo" onclick="responder('😐 Tranquilo')">😐 Tranquilo</button>
+    <button class="btn-estresado" onclick="responder('😟 Estresado')">😟 Estresado</button>
+  </div>
+
+  <div id="indicador">Relajado</div>
+
+  <p id="status">Sin conexión Bluetooth.</p>
+  <p id="frase">¡Todo va a estar bien! </p>
+
+  <!-- Botón para conectar al ESP32 por Bluetooth -->
+  <button onclick="conectarBluetooth()">🔗 Conectar por Bluetooth</button>
+
+  <!-- Si decides dejar la música, puedes conservar este botón -->
+  <!-- <button onclick="abrirMusica()">🎵 Música relajante</button> -->
+
+  <script>
+    let bleDevice = null;
+    let bleCharacteristic = null;
+
+    // Cambia estos UUID por los que definas en el ESP32
+    const SERVICE_UUID       = "12345678-1234-5678-1234-56789abcdef0";  // ejemplo
+    const CHARACTERISTIC_UUID = "12345678-1234-5678-1234-56789abcdef1"; // ejemplo
+
+    function nombrePaciente() {
+      return document.getElementById('nombre').value || "El paciente";
+    }
+
+    function responder(feeling) {
+      document.getElementById('feeling').innerText =
+        `${nombrePaciente()} se siente ${feeling}`;
+    }
+
+    function abrirMusica() {
+      window.open("https://spotify.link/EkeeZdYWwXb", "_blank");
+    }
+
+    async function conectarBluetooth() {
+      try {
+        document.getElementById('status').innerText = "Buscando OctoCalm por Bluetooth...";
+
+        bleDevice = await navigator.bluetooth.requestDevice({
+          // Puedes filtrar por nombre que le pongas al ESP32
+          filters: [{ namePrefix: "OctoCalm" }],
+          optionalServices: [SERVICE_UUID]
+        });
+
+        const server = await bleDevice.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        bleCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+
+        await bleCharacteristic.startNotifications();
+        bleCharacteristic.addEventListener(
+          "characteristicvaluechanged",
+          onCharacteristicValueChanged
+        );
+
+        document.getElementById('status').innerText =
+          "Conectado a OctoCalm por Bluetooth ✅";
+
+      } catch (error) {
+        console.error(error);
+        document.getElementById('status').innerText =
+          "Error al conectar por Bluetooth 😢";
+      }
+    }
+
+    // Aquí esperamos que el ESP32 mande 1 byte:
+    // 0 = relajado, 1 = medio, 2 = alto
+    function onCharacteristicValueChanged(event) {
+      const value = event.target.value;
+      const nivel = value.getUint8(0); // primer byte
+
+      actualizarNivelEstres(nivel);
+    }
+
+    function actualizarNivelEstres(level) {
+      const indicador = document.getElementById('indicador');
+      const frase = document.getElementById('frase');
+
+      if (level === 0) {
+        indicador.style.backgroundColor = "#4caf50"; // verde
+        indicador.innerText = "Relajado";
+        frase.innerText = "OctoCalm está muy tranquilo contigo 🐙💚";
+      } else if (level === 1) {
+        indicador.style.backgroundColor = "#2196f3"; // azul
+        indicador.innerText = "Medio";
+        frase.innerText = "Vamos bien, sigamos respirando juntos 💙";
+      } else {
+        indicador.style.backgroundColor = "#f44336"; // rojo
+        indicador.innerText = "Alto";
+        frase.innerText = "OctoCalm quiere ayudarte a calmarte ❤️‍🔥";
+      }
+    }
+  </script>
+</body>
+</html>
